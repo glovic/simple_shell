@@ -1,211 +1,115 @@
 #include "shell.h"
 
-char *get_args(char *line, int *exe_ret);
-int execute_args(char **args, char **front, int *exe_ret);
-int run_args(char **args, char **front, int *exe_ret);
-int handle_args(int *exe_ret);
-int verify_args(char **args);
-
 /**
- * get_args - Reads a command from standard input and stores it in a buffer.
+ * init_shell - initializes shell data
  *
- * @line: A buffer to store the command.
- * @exe_ret: The return value of the last executed command.
- *
- * Return:
- *   - On error: NULL.
- *   - Otherwise: A pointer to the stored command.
+ * Return: shell data initialized
  */
-char *get_args(char *line, int *exe_ret)
+shell_t *init_shell(void)
 {
-	size_t n = 0;
-	ssize_t read;
-	char *prompt = "$ ";
+	shell_t *msh = malloc(sizeof(shell_t));
 
-	if (line)
-		free(line);
-
-	read = get_input_line(&line, &n, STDIN_FILENO);
-	if (read == -1)
-		return (NULL);
-	if (read == 1)
+	if (msh == NULL)
 	{
-		historyCounter++;
-		if (isatty(STDIN_FILENO))
-			write(STDOUT_FILENO, prompt, 2);
-		return (get_args(line, exe_ret));
+		fprintf(stderr, "Launching shell failed.\n"
+				"Please ensure you have enough system resources for this operation\n");
+		exit(-1);
 	}
 
-	line[read - 1] = '\0';
-	replace_variables(&line, exe_ret);
-	process_input_line(&line, read);
+	msh->path_list = NULL;
+	msh->aliases = NULL;
+	msh->line = NULL;
+	msh->sub_command = NULL;
+	msh->commands = NULL;
+	msh->tokens = NULL;
+	msh->token = NULL;
+	msh->cmd_count = 0;
+	msh->exit_code = 0;
 
-	return (line);
+	return (msh);
 }
 
 /**
- * execute_args - Partitions operators from commands and calls them.
- * @args: An array of arguments.
- * @front: A double pointer to the beginning of args.
- * @exe_ret: The return value of the parent process' last executed command.
+ * get_hostname - returns the hostname of the system using the '/ect/hostname'
+ * file
+ * @buffer: the buffer to write the hostname to, it should large enough.
  *
- * Return: The return value of the last executed command.
+ * Return: the hostname if found, else defaults to using 'msh' when anything
+ * goes wrong
  */
-int execute_args(char **args, char **front, int *exe_ret)
+char *get_hostname(char *buffer)
 {
-	int retu, index;
+	int fd, n_read;
 
-	if (!args[0])
-		return (*exe_ret);
-	for (index = 0; args[index]; index++)
+	fd = open("/etc/hostname", O_RDONLY);
+
+	/* let's check whether the file opening failed */
+	if (fd == -1)
 	{
-		if (_strncmp(args[index], "||", 2) == 0)
-		{
-			free(args[index]);
-			args[index] = NULL;
-			args = substitute_aliases(args);
-			retu = run_args(args, front, exe_ret);
-			if (*exe_ret != 0)
-			{
-				args = &args[++index];
-				index = 0;
-			}
-			else
-			{
-				for (index++; args[index]; index++)
-					free(args[index]);
-				return (retu);
-			}
-		}
-		else if (_strncmp(args[index], "&&", 2) == 0)
-		{
-			free(args[index]);
-			args[index] = NULL;
-			args = substitute_aliases(args);
-			retu = run_args(args, front, exe_ret);
-			if (*exe_ret == 0)
-			{
-				args = &args[++index];
-				index = 0;
-			}
-			else
-			{
-				for (index++; args[index]; index++)
-					free(args[index]);
-				return (retu);
-			}
-		}
+		/* looks like it did, fall back to using 'msh' as the hostname */
+		_strcpy(buffer, "msh");
+		return (buffer);
 	}
-	args = substitute_aliases(args);
-	retu = run_args(args, front, exe_ret);
-	return (retu);
+
+	/* file opening was successful, let's grab the hostname */
+	n_read = read(fd, buffer, 100);
+
+	/* one more time, let's check for read failures and fall back as needed */
+	if (n_read == -1 || n_read == 0)
+		_strcpy(buffer, "msh");
+	else
+		buffer[n_read - 1] = '\0'; /* hostname was succesfully grabbed, use it */
+
+	close(fd);
+
+	return (buffer);
 }
-
 /**
- * run_args - Calls the execution of a command.
- * @args: An array of arguments.
- * @front: A double pointer to the beginning of args.
- * @exe_ret: The return value of the parent process' last executed command.
- *
- * Return: The return value of the last executed command.
+ * show_prompt - shows the prompt in interactive mode
  */
-int run_args(char **args, char **front, int *exe_ret)
+void show_prompt(void)
 {
-	int retu, i;
-	int (*builtin)(char **args, char **front);
+	char prompt[PROMPT_SIZE], hostname[100];
+	char *username = _getenv("USER"), *pwd;
 
-	builtin = get_builtin_cmd(args[0]);
-
-	if (builtin)
+	if (username != NULL)
 	{
-		retu = builtin(args + 1, front);
-		if (retu != EXIT)
-			*exe_ret = retu;
+		pwd = _getenv("PWD");
+		if (pwd != NULL)
+		{
+			/* get the right directory name to show on the prompt */
+			pwd = (*pwd == '/' && *(pwd + 1) == '\0')
+					  ? pwd
+					  : (_strrchr(pwd, '/') +
+						 1); /* show only the current directory */
+
+			sprintf(prompt, "[%s@%s %s]%% ", username, get_hostname(hostname),
+					(!_strcmp(pwd, username))
+						? "~" /* show '~' for the user's $HOME directory */
+						: pwd);
+		}
 	}
 	else
 	{
-		*exe_ret = exe_cmd(args, front);
-		retu = *exe_ret;
+		/*
+		 * there was not enough environment variables to build a much more
+		 * customized prompt, fall back to the minimal prompt
+		 */
+		sprintf(prompt, "msh%% ");
 	}
 
-	historyCounter++;
-
-	for (i = 0; args[i]; i++)
-		free(args[i]);
-
-	return (retu);
+	/* show the prompt in interactive modes only */
+	if (isatty(STDIN_FILENO))
+		printf("%s", prompt);
 }
 
 /**
- * handle_args - Gets, calls, and runs the execution of a command.
- * @exe_ret: The return value of the parent process' last executed command.
- *
- * Return: If an end-of-file is read - END_OF_FILE (-2).
- *         If the input cannot be tokenized - -1.
- *         O/w - The exit value of the last executed command.
+ * sigint_handler - handles signal interrupts (Ctrl+C)
+ * @signum: signal number (unused)
  */
-int handle_args(int *exe_ret)
+void sigint_handler(__attribute__((unused))int signum)
 {
-	int retu = 0, index;
-	char **args, *line = NULL, **front;
-
-	line = get_args(line, exe_ret);
-	if (!line)
-		return (END_OF_FILE);
-
-	args = tokenize_string(line, " ");
-	free(line);
-	if (!args)
-		return (retu);
-	if (verify_args(args) != 0)
-	{
-		*exe_ret = 2;
-		free_exe_args(args, args);
-		return (*exe_ret);
-	}
-	front = args;
-
-	for (index = 0; args[index]; index++)
-	{
-		if (_strncmp(args[index], ";", 1) == 0)
-		{
-			free(args[index]);
-			args[index] = NULL;
-			retu = execute_args(args, front, exe_ret);
-			args = &args[++index];
-			index = 0;
-		}
-	}
-	if (args)
-		retu = execute_args(args, front, exe_ret);
-
-	free(front);
-	return (retu);
-}
-
-/**
- * verify_args - It verifies if there are any leading ';', ';;', '&&', or '||'.
- * @args: 2D pointer to tokenized commands and arguments.
- *
- * Return: If a ';', '&&', or '||' is placed at an invalid position - 2.
- *	   Otherwise - 0.
- */
-int verify_args(char **args)
-{
-	size_t i;
-	char *cur, *nex;
-
-	for (i = 0; args[i]; i++)
-	{
-		cur = args[i];
-		if (cur[0] == ';' || cur[0] == '&' || cur[0] == '|')
-		{
-			if (i == 0 || cur[1] == ';')
-				return (generate_error(&args[i], 2));
-			nex = args[i + 1];
-			if (nex && (nex[0] == ';' || nex[0] == '&' || nex[0] == '|'))
-				return (generate_error(&args[i + 1], 2));
-		}
-	}
-	return (0);
+	putchar('\n');
+	show_prompt();
+	fflush(stdout);
 }
