@@ -1,202 +1,212 @@
 #include "shell.h"
 
-
-int (*get_builtin_cmd(char *cmd))(char **args, char **front);
-int exit_shell(char **args, char **front);
-int change_dir(char **args, char __attribute__((__unused__)) **front);
-int display_help(char **args, char __attribute__((__unused__)) **front);
-
 /**
- * get_builtin_cmd - Matches a command with a corresponding
- *                    LSH builtin function.
+ * _setenv - set a custom environment variable
+ * @name: the name of the variable
+ * @value: the value to set
+ * @overwrite: if true, overwrite the variable if it exists
  *
- * @cmd: The command to match.
+ * Description: This function sets a custom environment variable with the given
+ * name and value. If the variable already exists and overwrite is true, it
+ * will be replaced.
  *
- * Return: A function pointer to the corresponding builtin.
+ * Return: 0 on success, 1 on error
  */
-int (*get_builtin_cmd(char *cmd))(char **args, char **front)
+int _setenv(const char *name, const char *value, int overwrite)
 {
-	builtin_t funcs[] = {
-		{ "exit", exit_shell },
-		{ "env", show_environ },
-		{ "setenv", set_environ_var },
-		{ "unsetenv", unset_environ_var },
-		{ "cd", change_dir },
-		{ "alias", define_alias },
-		{ "help", display_help },
-		{ NULL, NULL }
-	};
-	int i;
+	size_t len, i;
+	char *env_var = NULL;
 
-	for (i = 0; funcs[i].name; i++)
+	if (name == NULL || name[0] == '\0' || _strchr(name, '=') != NULL)
 	{
-		if (_strcmp(funcs[i].name, cmd) == 0)
-			break;
+		fprintf(stderr, "Invalid variable name: %s\n", name);
+		return (1);
 	}
-	return (funcs[i].f);
-}
-
-/**
- * exit_shell - Causes normal process termination for the LSH shell.
- *
- * @args: An array of arguments containing the exit value.
- * @front: A double pointer to the beginning of args.
- *
- * Return:
- *   - If there are no arguments: -3.
- *   - If the given exit value is invalid: 2.
- *   - Otherwise: exits with the given status value.
- * Description:
- *   - Upon returning -3, the program exits back in the main function.
- */
-int exit_shell(char **args, char **front)
-{
-	int i, len_of_int = 10;
-	unsigned int num = 0, max = 1 << (sizeof(int) * 8 - 1);
-
-	if (args[0])
+	/* check if the variable already exists */
+	if (_getenv(name) != NULL)
 	{
-		if (args[0][0] == '+')
+		if (overwrite)
 		{
-			i = 1;
-			len_of_int++;
-		}
-		for (; args[0][i]; i++)
-		{
-			if (i <= len_of_int && args[0][i] >= '0' && args[0][i] <= '9')
-				num = (num * 10) + (args[0][i] - '0');
-			else
-				return (generate_error(--args, 2));
-		}
-	}
-	else
-	{
-		return (-3);
-	}
-	if (num > max - 1)
-		return (generate_error(--args, 2));
-	args -= 1;
-	free_exe_args(args, front);
-	free_environ();
-	free_alias_list(aliases);
-	exit(num);
-}
-
-
-/**
- * change_dir - Changes the current directory of the LSH process.
- *
- * @args: An array of arguments.
- * @front: A double pointer to the beginning of args.
- *
- * Return:
- *   - If the given string is not a directory: 2.
- *   - If an error occurs: -1.
- *   - Otherwise: 0.
- */
-int change_dir(char **args, char __attribute__((__unused__)) **front)
-{
-	char **dir_info, *new_line = "\n";
-	char *oldpwd = NULL, *pwd = NULL;
-	struct stat dir;
-
-	oldpwd = getcwd(oldpwd, 0);
-	if (!oldpwd)
-		return (-1);
-
-	if (args[0])
-	{
-		if (*(args[0]) == '-' || _strcmp(args[0], "--") == 0)
-		{
-			if ((args[0][1] == '-' && args[0][2] == '\0') ||
-					args[0][1] == '\0')
-			{
-				if (get_environ_var("OLDPWD") != NULL)
-					(chdir(*get_environ_var("OLDPWD") + 7));
-			}
-			else
-			{
-				free(oldpwd);
-				return (generate_error(args, 2));
-			}
+			if (_unsetenv(name) != 0)
+				return (1);
 		}
 		else
+			return (0); /* variable exists, and overwrite is false */
+	}
+	len = _strlen(name) + _strlen(value) + 2;
+	env_var = malloc(len);
+	if (env_var == NULL)
+		return (1);
+
+	sprintf(env_var, "%s=%s", name, value);
+	for (i = 0; environ[i] != NULL; i++)
+	{
+		if (_strncmp(environ[i], name, len) == 0 && environ[i][len] == '=')
 		{
-			if (stat(args[0], &dir) == 0 && S_ISDIR(dir.st_mode)
-					&& ((dir.st_mode & S_IXUSR) != 0))
-				chdir(args[0]);
-			else
-			{
-				free(oldpwd);
-				return (generate_error(args, 2));
-			}
+			environ[i] = env_var;
+			safe_free(env_var);
+			return (0);
 		}
 	}
-	else
-	{
-		if (get_environ_var("HOME") != NULL)
-			chdir(*(get_environ_var("HOME")) + 5);
-	}
+	/* the variable doesn't exist, create it */
+	environ[i++] = env_var;
+	environ[i] = NULL;
+	safe_free(env_var);
 
-	pwd = getcwd(pwd, 0);
-	if (!pwd)
-		return (-1);
-
-	dir_info = malloc(sizeof(char *) * 2);
-	if (!dir_info)
-		return (-1);
-
-	dir_info[0] = "OLDPWD";
-	dir_info[1] = oldpwd;
-	if (set_environ_var(dir_info, dir_info) == -1)
-		return (-1);
-
-	dir_info[0] = "PWD";
-	dir_info[1] = pwd;
-	if (set_environ_var(dir_info, dir_info) == -1)
-		return (-1);
-	if (args[0] && args[0][0] == '-' && args[0][1] != '-')
-	{
-		write(STDOUT_FILENO, pwd, _strlen(pwd));
-		write(STDOUT_FILENO, new_line, 1);
-	}
-	free(oldpwd);
-	free(pwd);
-	free(dir_info);
 	return (0);
 }
 
+/**
+ * _unsetenv - unset a custom environment variable
+ * @name: The name of the variable to unset
+ *
+ * Description: This function unsets a custom environment variable with the
+ * given name.
+ *
+ * Return: 0 on success, 1 on error
+ */
+int _unsetenv(const char *name)
+{
+	size_t i, j, len;
 
+	/* check for invalid variable names */
+	if (name == NULL || name[0] == '\0' || _strchr(name, '=') != NULL)
+	{
+		fprintf(stderr, "Invalid variable name: %s\n", name);
+		return (1);
+	}
+
+	len = _strlen(name);
+
+	/* iterate through the environment variables and find the one to remove */
+	for (i = 0; environ[i] != NULL; i++)
+	{
+		if (_strncmp(environ[i], name, len) == 0 && environ[i][len] == '=')
+		{
+			/* shift all environment variables after the one to be removed */
+			for (j = i; environ[j] != NULL; j++)
+			{
+				environ[j] = environ[j + 1];
+			}
+			return (0);
+		}
+	}
+
+	dprintf(STDERR_FILENO, "Variable not found: %s\n", name);
+	return (1);
+}
 
 /**
- * display_help - Displays information about LSH builtin commands.
+ * handle_exit - handles the built-in `exit` command for the shell
+ * @msh: contains all the data relevant to the shell's operation
+ * @cleanup: a cleanup function
  *
- * @args: An array of arguments.
- * @front: A pointer to the beginning of args.
- * Return:
- *   - If an error occurs: -1.
- *   - Otherwise: 0.
+ * Return: 2 on error, else exits with the last the provided exit code
  */
-int display_help(char **args, char __attribute__((__unused__)) **front)
+int handle_exit(shell_t *msh, void (*cleanup)(const char *format, ...))
 {
-	if (!args[0])
-		help_for_all();
-	else if (_strcmp(args[0], "alias") == 0)
-		help_for_alias();
-	else if (_strcmp(args[0], "cd") == 0)
-		help_for_cd();
-	else if (_strcmp(args[0], "exit") == 0)
-		help_for_exit();
-	else if (_strcmp(args[0], "env") == 0)
-		help_for_environ();
-	else if (_strcmp(args[0], "setenv") == 0)
-		help_for_setenv();
-	else if (_strcmp(args[0], "unsetenv") == 0)
-		help_for_unsetenv();
-	else if (_strcmp(args[0], "help") == 0)
-		help_for_help();
-	else
-		write(STDERR_FILENO, name, _strlen(name));
+	const char *status_code = (msh->sub_command) ? msh->sub_command[1] : NULL;
+	int exit_code = msh->exit_code;
 
+	if (status_code == NULL)
+	{
+		cleanup("spattt", msh->line, &msh->path_list, &msh->aliases,
+				&msh->commands, &msh->sub_command, &msh->tokens);
+		safe_free(msh);
+		exit(exit_code);
+	}
+
+	if (isalpha(*status_code) || _atoi(status_code) < 0 || *status_code == '-')
+	{
+		dprintf(STDERR_FILENO, "%s: %lu: exit: Illegal number: %s\n",
+				msh->prog_name, msh->cmd_count, status_code);
+		return (CMD_ERR);
+	}
+
+	exit_code = _atoi(status_code);
+	cleanup("spattt", msh->line, &msh->path_list, &msh->aliases,
+			&msh->commands, &msh->sub_command, &msh->tokens);
+	safe_free(msh);
+	exit(exit_code);
+}
+
+/**
+ * handle_cd - handles the builtin `cd` command
+ * @msh: contains all the data relevant to the shell's operation
+ *
+ * Return: 0 on success, else 2 on error
+ */
+int handle_cd(shell_t *msh)
+{
+	char path[PATH_SIZE], pwd[BUFF_SIZE];
+	const char *pathname = msh->sub_command[1];
+	char *home = _getenv("HOME"), *oldpath = _getenv("OLDPWD");
+
+	getcwd(pwd, BUFF_SIZE);
+	oldpath = (oldpath) ? oldpath : pwd;
+	if (pathname != NULL && *pathname != '~')
+	{
+		int dash = !_strcmp(pathname, "-") || !_strcmp(pathname, "--");
+
+		if (!_strchr(pathname, '/') && !dash)
+			sprintf(path, "%s/%s", pwd, ((dash) ? oldpath : pathname));
+		else
+			sprintf(path, "%s", ((dash) ? oldpath : pathname));
+		if (chdir(path) == -1)
+		{
+			if (_strspn(pathname, "-") > 2)
+				fprintf(stderr, "%s: %lu: cd: Illegal option: --\n", msh->prog_name,
+						msh->cmd_count);
+			else
+				fprintf(stderr, "%s: %lu: cd: can't cd to %s\n", msh->prog_name,
+						msh->cmd_count, pathname);
+			return (CMD_ERR);
+		}
+		if (dash)
+			printf("%s\n", oldpath);
+		setenv("OLDPWD", pwd, 1);
+		getcwd(path, PATH_SIZE);
+		setenv("PWD", path, 1);
+	}
+	else
+	{
+		if (home == NULL)
+			return (0); /* HOME is not set */
+		if (chdir(home) == -1)
+			return (CMD_ERR);
+		setenv("OLDPWD", pwd, 1);
+		setenv("PWD", home, 1);
+	}
 	return (0);
+}
+
+/**
+ * _printenv - prints all environment variables
+ */
+void _printenv(void)
+{
+	int fd, status;
+	char *filename = "/tmp/env";
+	pid_t child;
+
+	fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0644);
+	if (fd == -1)
+		return;
+
+	if (write(fd, "env", 3) != -1)
+	{
+		char *argv[] = {"/bin/sh", "/tmp/env", NULL};
+
+		child = fork();
+		if (child == 0)
+			execve(argv[0], argv, environ);
+		else
+			waitpid(child, &status, 0);
+		close(fd);
+	}
+	else
+	{
+		close(fd);
+		return;
+	}
 }
