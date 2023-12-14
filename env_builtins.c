@@ -1,141 +1,159 @@
 #include "shell.h"
 
-int show_environ(char **args, char __attribute__((__unused__)) **front);
-int set_environ_var(char **args, char __attribute__((__unused__)) **front);
-int unset_environ_var(char **args, char __attribute__((__unused__)) **front);
+static int exit_code;
 
 /**
- * show_environ - Prints the current environment.
+ * handle_alias - handles the processing of alias
+ * @head: a pointer to the list containing all aliases
+ * @command: the list of commands containing alias-specific lines
  *
- * @args: An array of arguments passed to the shell.
- * @front: A double pointer to the beginning of args.
- *
- * Return:
- *   - If an error occurs: -1.
- *   - Otherwise: 0.
- *
- * Description: Prints one variable per line in the format 'variable'='value'.
+ * Return: 0 on success, -1 on error
  */
-int show_environ(char **args, char __attribute__((__unused__)) **front)
+int handle_alias(alias_t **head, char *command)
 {
-	int index;
-	char nc = '\n';
+	while (*command == ' ')
+		command++; /* remove all the leading spaces */
 
-	if (!environ)
-		return (-1);
+	if (_strlen(command) == 5)
+		print_aliases(*head);
 
-	for (index = 0; environ[index]; index++)
+	else if (!_strncmp(command, "alias", 5))
 	{
-		write(STDOUT_FILENO, environ[index], _strlen(environ[index]));
-		write(STDOUT_FILENO, &nc, 1);
+		if (!_strchr(command, '='))
+			process_non_matching(*head, command + 5, 1);
+		else
+			parse_aliases(command, head);
 	}
 
-	(void)args;
-	return (0);
+	else if (!_strncmp(command, "unalias", 7))
+		return (unalias(head, command));
+
+	return (exit_code);
 }
 
-
 /**
- * set_environ_var - Changes or adds an environmental variable to the PATH.
+ * parse_aliases - extract aliases from the input string using regular
+ * expressions.
+ * @input: the input string containing aliases
+ * @aliases: a pointer to a list of aliases
  *
- * @args: An array of arguments passed to the shell.
- * @front: A double pointer to the beginning of args.
- * Description:
- *   - args[1] is the name of the new or existing PATH variable.
- *   - args[2] is the value to set the new or changed variable to.
- *
- * Return:
- *   - If an error occurs: -1.
- *   - Otherwise: 0.
+ * Description: This function uses regular expressions to extract aliases from
+ * the input string. It populates the provided array of Alias structures with
+ * the parsed aliases and updates the aliasCount accordingly.
  */
-int set_environ_var(char **args, char __attribute__((__unused__)) **front)
+void parse_aliases(const char *input, alias_t **aliases)
 {
-	char **env_var = NULL, **new_environ, *new_value;
-	size_t size;
-	int index;
+	char *input_ptr = NULL;
+	size_t valueLength, alias_count = 0;
+	regmatch_t matches[3];
+	regex_t regex;
+	const char *pattern =
+		"([^\"]\\S*|\"[^\"]*\"|'[^\']*')=([^\"]\\S*|\"[^\"]*\"|'[^\']*')";
 
-	if (!args[0] || !args[1])
-		return (generate_error(args, -1));
-
-	new_value = malloc(_strlen(args[0]) + 1 + _strlen(args[1]) + 1);
-	if (!new_value)
-		return (generate_error(args, -1));
-	_strcpy(new_value, args[0]);
-	_strcat(new_value, "=");
-	_strcat(new_value, args[1]);
-
-	env_var = get_environ_var(args[0]);
-	if (env_var)
+	if (regcomp(&regex, pattern, REG_EXTENDED) != 0)
+		return; /* regular expression compilation failed */
+	input_ptr = (char *)input;
+	while (regexec(&regex, input_ptr, 3, matches, 0) == 0)
 	{
-		free(*env_var);
-		*env_var = new_value;
-		return (0);
-	}
-	for (size = 0; environ[size]; size++)
-		;
+		char name[MAX_ALIAS_LENGTH] = {0};
+		char value[MAX_VALUE_LENGTH] = {0};
 
-	new_environ = malloc(sizeof(char *) * (size + 2));
-	if (!new_environ)
-	{
-		free(new_value);
-		return (generate_error(args, -1));
-	}
+		/* extract the alias name, accounts for the leading spaces */
+		_strncpy(name, (input_ptr + 1) + matches[1].rm_so,
+				 (matches[1].rm_eo - 1) - matches[1].rm_so);
+		_strncpy(value, input_ptr + matches[2].rm_so,
+				 matches[2].rm_eo - matches[2].rm_so); /* extract the alias value */
+		name[matches[1].rm_eo - matches[1].rm_so] = '\0';
 
-	for (index = 0; environ[index]; index++)
-		new_environ[index] = environ[index];
-
-	free(environ);
-	environ = new_environ;
-	environ[index] = new_value;
-	environ[index + 1] = NULL;
-
-	return (0);
-}
-
-
-/**
- * unset_environ_var - Deletes an environmental variable from the PATH.
- *
- * @args: An array of arguments passed to the shell.
- * @front: A double pointer to the beginning of args.
- * Description: args[1] is the PATH variable to remove.
- *
- * Return:
- *   - If an error occurs: -1.
- *   - Otherwise: 0.
- */
-int unset_environ_var(char **args, char __attribute__((__unused__)) **front)
-{
-	char **env_var, **new_environ;
-	size_t size;
-	int index, index2;
-
-	if (!args[0])
-		return (generate_error(args, -1));
-	env_var = get_environ_var(args[0]);
-	if (!env_var)
-		return (0);
-
-	for (size = 0; environ[size]; size++)
-		;
-
-	new_environ = malloc(sizeof(char *) * size);
-	if (!new_environ)
-		return (generate_error(args, -1));
-
-	for (index = 0, index2 = 0; environ[index]; index++)
-	{
-		if (*env_var == environ[index])
+		valueLength = matches[2].rm_eo - matches[2].rm_so;
+		if (isquote(value[0])) /* remove quotes */
 		{
-			free(*env_var);
-			continue;
+			_strncpy(value, input_ptr + matches[2].rm_so + 1, valueLength - 2);
+			value[valueLength - 2] = '\0';
 		}
-		new_environ[index2] = environ[index];
-		index2++;
+		else /* not enclosed in quotes, copy as is */
+			value[valueLength] = '\0';
+		if (add_alias(aliases, name, value) == NULL)
+			return;
+		if (alias_count)
+			process_non_matching(*aliases, input_ptr, 0);
+		alias_count++;				   /* increment alias count */
+		input_ptr += matches[0].rm_eo; /* keep searching */
 	}
-	free(environ);
-	environ = new_environ;
-	environ[size - 1] = NULL;
+	if (alias_count)
+		process_non_matching(*aliases, input_ptr, 1);
+	regfree(&regex);
+}
 
-	return (0);
+/**
+ * process_non_matching - processes strings that do not have the `name=value`
+ * format while parsing aliases
+ * @aliases: a list containing aliases
+ * @non_matching: the string to check for non-matching patterns
+ * @end: used to signal the end. 1 means it can process the whole string at
+ * once. 0 means it can do only word token at a time
+ */
+void process_non_matching(alias_t *aliases, const char *non_matching, int end)
+{
+	char *token, *dup;
+
+	if (non_matching == NULL || *non_matching == '\0')
+		return; /* there's nothing to work on, everything matched */
+
+	dup = _strdup(non_matching);
+	token = strtok(dup, " ");
+
+	/* it is non-matching if it doesn't contain an equal sign */
+	if (!_strchr(token, '='))
+	{
+		if (end)
+		{
+			while (token != NULL)
+			{
+				exit_code = print_alias(aliases, token);
+				token = strtok(NULL, " ");
+			}
+		}
+		else
+			exit_code = print_alias(aliases, token);
+	}
+	free(dup);
+}
+
+/**
+ * build_alias_cmd - builds the correct command line when the received input is
+ * a valid alias command
+ * @sub_command: a pointer to the array containing the commands
+ * @alias_value: the value of the alias command
+ */
+void build_alias_cmd(char ***sub_command, char *alias_value)
+{
+	char **dup_array = NULL;
+
+	if ((*sub_command)[1] != NULL)
+	{
+		/* save a copy of the the commands array, excluding the alias */
+		dup_array = duplicate_str_array((*sub_command) + 1);
+		if (dup_array == NULL)
+		{
+			fprintf(stderr, "alias: Memory allocation failed\n");
+			return;
+		}
+
+		/* memory and build the command line string based on the alias value */
+		free_str(sub_command);
+		*sub_command = _strtok(alias_value, NULL);
+
+		/* concatenate both arrays to form a complete command string */
+		concatenate_arrays(sub_command, dup_array);
+
+		/* clean up and return */
+		free_str(&dup_array);
+	}
+	else
+	{
+		/* there was alias alright but no other arguments */
+		free_str(sub_command);
+		*sub_command = _strtok(alias_value, NULL);
+	}
 }
