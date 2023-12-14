@@ -31,7 +31,13 @@ alias_t *alias_to_end(alias_t **head, char *name, char *value)
 		free(new_node);
 		return (NULL);
 	}
-	new_node->value = value;
+	new_node->value = _strdup(value);
+	if (!new_node->value)
+	{
+		free(new_node->name);
+		free(new_node);
+		return (NULL);
+	}
 	_strcpy(new_node->name, name);
 
 	if (*head)
