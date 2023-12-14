@@ -1,189 +1,85 @@
 #include "shell.h"
 
-void process_input_line(char **line, ssize_t read);
-ssize_t get_new_len(char *line);
-void logical_ops(char *line, ssize_t *new_len);
-
 /**
- * process_input_line - Partitions a line read from standard input as needed.
- *
- * @line: A pointer to a line read from standard input.
- * @read: The length of the line.
- *
- * Description: Spaces are inserted to separate ";", "||", and "&&".
- *              Replaces "#" with '\0'.
+ * free_list - frees a path_t list
+ * @head: the head node
  */
-void process_input_line(char **line, ssize_t read)
+void free_list(path_t **head)
 {
-	char *old_line, *new_line;
-	char previous, current, next;
-	size_t i, j;
-	ssize_t new_len;
+	path_t *current_node;
 
-	new_len = get_new_len(*line);
-	if (new_len == read - 1)
+	if (head == NULL || *head == NULL)
 		return;
-	new_line = malloc(new_len + 1);
-	if (!new_line)
-		return;
-	j = 0;
-	old_line = *line;
-	for (i = 0; old_line[i]; i++)
+
+	while (*head != NULL)
 	{
-		current = old_line[i];
-		next = old_line[i + 1];
-		if (i != 0)
-		{
-			previous = old_line[i - 1];
-			if (current == ';')
-			{
-				if (next == ';' && previous != ' ' && previous != ';')
-				{
-					new_line[j++] = ' ';
-					new_line[j++] = ';';
-					continue;
-				}
-				else if (previous == ';' && next != ' ')
-				{
-					new_line[j++] = ';';
-					new_line[j++] = ' ';
-					continue;
-				}
-				if (previous != ' ')
-					new_line[j++] = ' ';
-				new_line[j++] = ';';
-				if (next != ' ')
-					new_line[j++] = ' ';
-				continue;
-			}
-			else if (current == '&')
-			{
-				if (next == '&' && previous != ' ')
-					new_line[j++] = ' ';
-				else if (previous == '&' && next != ' ')
-				{
-					new_line[j++] = '&';
-					new_line[j++] = ' ';
-					continue;
-				}
-			}
-			else if (current == '|')
-			{
-				if (next == '|' && previous != ' ')
-					new_line[j++]  = ' ';
-				else if (previous == '|' && next != ' ')
-				{
-					new_line[j++] = '|';
-					new_line[j++] = ' ';
-					continue;
-				}
-			}
-		}
-		else if (current == ';')
-		{
-			if (i != 0 && old_line[i - 1] != ' ')
-				new_line[j++] = ' ';
-			new_line[j++] = ';';
-			if (next != ' ' && next != ';')
-				new_line[j++] = ' ';
-			continue;
-		}
-		new_line[j++] = old_line[i];
+		current_node = (*head);
+		(*head) = (*head)->next; /* move to the next node */
+		safe_free(
+			current_node->pathname); /* free memory allocated for the string */
+		safe_free(current_node);	 /* free memory for the current node */
 	}
-	new_line[j] = '\0';
-
-	free(*line);
-	*line = new_line;
 }
 
 /**
- * get_new_len - Determines the new length of a line partitioned
- *               by ";", "||", "&&&", or "#".
- *
- * @line: The line to check.
- *
- * Return: The new length of the line.
- *
- * Description: Shortens lines with '#' comments by truncating them with '\0'.
+ * free_aliases - frees an alias_t list
+ * @head: a pointer to the list containing the aliases
  */
-ssize_t get_new_len(char *line)
+void free_aliases(alias_t **head)
 {
-	size_t i;
-	ssize_t new_len = 0;
-	char current, next;
+	alias_t *current;
 
-	for (i = 0; line[i]; i++)
+	if (*head == NULL || head == NULL)
+		return;
+
+	while (*head != NULL)
 	{
-		current = line[i];
-		next = line[i + 1];
-		if (current == '#')
-		{
-			if (i == 0 || line[i - 1] == ' ')
-			{
-				line[i] = '\0';
-				break;
-			}
-		}
-		else if (i != 0)
-		{
-			if (current == ';')
-			{
-				if (next == ';' && line[i - 1] != ' ' && line[i - 1] != ';')
-				{
-					new_len += 2;
-					continue;
-				}
-				else if (line[i - 1] == ';' && next != ' ')
-				{
-					new_len += 2;
-					continue;
-				}
-				if (line[i - 1] != ' ')
-					new_len++;
-				if (next != ' ')
-					new_len++;
-			}
-			else
-				logical_ops(&line[i], &new_len);
-		}
-		else if (current == ';')
-		{
-			if (i != 0 && line[i - 1] != ' ')
-				new_len++;
-			if (next != ' ' && next != ';')
-				new_len++;
-		}
-		new_len++;
+		current = (*head);
+		(*head) = (*head)->next;
+
+		/* free memory */
+		safe_free(current->name);
+		safe_free(current->value);
+		safe_free(current);
 	}
-	return (new_len);
 }
 
 /**
- * logical_ops - Checks a line for logical operators "||" or "&&".
+ * multi_free - frees dynamically allocated memory
+ * @format: the format of how dynamically allocated variables are given
  *
- * @line: A pointer to the character to check in the line.
- * @new_len: Pointer to new_len in the get_new_len function.
+ * Description: 's' is for a normal string (char *)
+ *				't' is for an array of strings (char **)
+ *				'p' is for the path_t list
+ *				'a' is for the alias_t list
  */
-void logical_ops(char *line, ssize_t *new_len)
+void multi_free(const char *format, ...)
 {
-	char previous, current, next;
+	va_list ap;
+	char *line;
 
-	previous = *(line - 1);
-	current = *line;
-	next = *(line + 1);
+	va_start(ap, format);
 
-	if (current == '&')
+	while (*format != '\0')
 	{
-		if (next == '&' && previous != ' ')
-			(*new_len)++;
-		else if (previous == '&' && next != ' ')
-			(*new_len)++;
-	}
-	else if (current == '|')
-	{
-		if (next == '|' && previous != ' ')
-			(*new_len)++;
-		else if (previous == '|' && next != ' ')
-			(*new_len)++;
+		switch (*format)
+		{
+		case 's':
+			line = va_arg(ap, char *);
+			safe_free(line);
+			break;
+		case 't':
+			free_str(va_arg(ap, char ***));
+			break;
+		case 'p':
+			free_list(va_arg(ap, path_t **));
+			break;
+		case 'a':
+			free_aliases(va_arg(ap, alias_t **));
+			break;
+		default:
+			break;
+		}
+		format++;
 	}
 }
