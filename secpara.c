@@ -1,105 +1,52 @@
 #include "shell.h"
 
-int token_len(char *str, char *delim);
-int count_tokens(char *str, char *delim);
-char **tokenize_string(char *line, char *delim);
-
 /**
- * token_len - Finds the delimiter index indicating the end
- *             of the first token within a string.
+ * handle_variables - handles variables passed to the shell
+ * @msh: shell data
  *
- * @str: The string to be searched.
- * @delim: The delimiter character.
- *
- * Return: The delimiter index marking the end of the initial token
- *         pointed to by 'str'.
+ * Return: the updated command with variables expanded if one was found, else
+ * the @command is returned as received with no modifications
  */
-int token_len(char *str, char *delim)
+char **handle_variables(shell_t *msh)
 {
-	int index = 0, len = 0;
+	size_t i;
+	ssize_t offset;
+	char *value, *loc, result[32];
 
-	while (*(str + index) && *(str + index) != *delim)
+	for (i = 0; msh->sub_command[i] != NULL; i++)
 	{
-		len++;
-		index++;
-	}
+		loc = _strchr(msh->sub_command[i], '$');
+		if (loc == NULL)
+			/* no variables found yet? keep, searching till the end */
+			continue;
 
-	return (len);
-}
+		offset = (&loc[0]) - (&msh->sub_command[i][0]);
 
-/**
- * count_tokens - Counts the number of delimited words within a string.
- *
- * @str: The string to be searched.
- * @delim: The delimiter character.
- *
- * Return: The number of words contained within 'str'.
- */
-int count_tokens(char *str, char *delim)
-{
-	int index, tokens = 0, len = 0;
+		if (msh->sub_command[i][offset + 1] == '\0')
+			continue; /* this is just a literal '$' sign, ignore it */
 
-	for (index = 0; *(str + index); index++)
-		len++;
-
-	for (index = 0; index < len; index++)
-	{
-		if (*(str + index) != *delim)
+		/* what's my PID? that's what this guy tells you */
+		if (msh->sub_command[i][offset + 1] == '$')
 		{
-			tokens++;
-			index += token_len(str + index, delim);
+			_itoa(getpid(), result);
+			safe_free(msh->sub_command[i]);
+			msh->sub_command[i] = _strdup(result);
+		}
+		/* this is for when the user wants the exit code of the last process */
+		else if (msh->sub_command[i][offset + 1] == '?')
+		{
+			_itoa(msh->exit_code, result);
+			safe_free(msh->sub_command[i]);
+			msh->sub_command[i] = _strdup(result);
+		}
+		/* this is for when something like '$HOSTNAME' is received */
+		else
+		{
+			value = _getenv(loc + 1);
+			safe_free(msh->sub_command[i]);
+			msh->sub_command[i] = _strdup(value);
 		}
 	}
 
-	return (tokens);
-}
-
-/**
- * tokenize_string - Tokenizes a string.
- * @line: The string.
- * @delim: The delimiter character to tokenize the string by.
- *
- * Return: A pointer to an array containing the tokenized words.
- */
-char **tokenize_string(char *line, char *delim)
-{
-	char **ptr;
-	int index = 0, tokens, t, letters, l;
-
-	tokens = count_tokens(line, delim);
-	if (tokens == 0)
-		return (NULL);
-
-	ptr = malloc(sizeof(char *) * (tokens + 2));
-	if (!ptr)
-		return (NULL);
-
-	for (t = 0; t < tokens; t++)
-	{
-		while (line[index] == *delim)
-			index++;
-
-		letters = token_len(line + index, delim);
-
-		ptr[t] = malloc(sizeof(char) * (letters + 1));
-		if (!ptr[t])
-		{
-			for (index -= 1; index >= 0; index--)
-				free(ptr[index]);
-			free(ptr);
-			return (NULL);
-		}
-
-		for (l = 0; l < letters; l++)
-		{
-			ptr[t][l] = line[index];
-			index++;
-		}
-
-		ptr[t][l] = '\0';
-	}
-	ptr[t] = NULL;
-	ptr[t + 1] = NULL;
-
-	return (ptr);
+	return (msh->sub_command);
 }
