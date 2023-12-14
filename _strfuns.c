@@ -1,89 +1,68 @@
 #include "shell.h"
 
-int _strlen(const char *s);
-char *_strcpy(char *dest, const char *src);
-char *_strcat(char *dest, const char *src);
-char *_strncat(char *dest, const char *src, size_t n);
-
 /**
- * _strlen - Computes the length of a string.
+ * duplicate_str_array - duplicate a string array
+ * @original: the original string
  *
- * @s: A pointer to the character string.
- *
- * Return: The length of the given character string.
+ * Return: the duplicate string on success, else NULL if it fails
  */
-int _strlen(const char *s)
+char **duplicate_str_array(char **original)
 {
-	int length = 0;
+	size_t size, i;
+	char **duplicate;
 
-	if (!s)
-		return (length);
-	for (length = 0; s[length]; length++)
-		;
-	return (length);
+	if (original == NULL)
+		return (NULL);
+
+	size = 0;
+	while (original[size] != NULL)
+		size++;
+
+	duplicate = malloc((size + 1) * sizeof(char *));
+	if (duplicate == NULL)
+		return (NULL);
+
+	for (i = 0; i < size; i++)
+	{
+		duplicate[i] = _strdup(original[i]);
+		if (duplicate[i] == NULL)
+		{
+			free_str(&duplicate);
+			return (NULL);
+		}
+	}
+	duplicate[size] = NULL;
+
+	return (duplicate);
 }
 
 /**
- * _strcpy - Copies the string from 'src' to 'dest', including the
- *		terminating null byte.
- *
- * @dest: Pointer to the destination buffer for the copied string.
- * @src: Pointer to the source string.
- *
- * Return: A pointer to 'dest'.
+ * concatenate_arrays - appends the contents of one string array to another
+ * @dest: a pointer to the destination string array
+ * @src: the source string array (where to copy from)
  */
-char *_strcpy(char *dest, const char *src)
+void concatenate_arrays(char ***dest, char **src)
 {
-	size_t i;
+	int i, src_length = 0, dest_length = 0;
 
-	for (i = 0; src[i] != '\0'; i++)
-		dest[i] = src[i];
-	dest[i] = '\0';
-	return (dest);
-}
+	if (src == NULL)
+		return; /* there's nothing concatenate */
 
-/**
- * _strcat - Concatenates two strings.
- *
- * @dest: Pointer to the destination string.
- * @src: Pointer to the source string.
- *
- * Return: Pointer to the destination string.
- */
-char *_strcat(char *dest, const char *src)
-{
-	char *destTemp;
-	const char *srcTemp;
+	while ((*dest)[dest_length] != NULL)
+		dest_length++;
 
-	destTemp = dest;
-	srcTemp =  src;
+	while (src[src_length] != NULL)
+		src_length++;
 
-	while (*destTemp != '\0')
-		destTemp++;
+	*dest = realloc(*dest, (dest_length + src_length + 1) * sizeof(char *));
+	if (*dest == NULL)
+		return; /* memory allocation failed */
 
-	while (*srcTemp != '\0')
-		*destTemp++ = *srcTemp++;
-	*destTemp = '\0';
-	return (dest);
-}
+	for (i = 0; i < src_length; i++)
+	{
+		(*dest)[dest_length + i] = _strdup(src[i]);
+	}
 
-/**
- * _strncat - Concantenates two strings where n number
- *            of bytes are copied from source.
- * @dest: Pointer to destination string.
- * @src: Pointer to source string.
- * @n: n bytes to copy from src.
- *
- * Return: Pointer to destination string.
- */
-char *_strncat(char *dest, const char *src, size_t n)
-{
-	size_t dest_len = _strlen(dest);
-	size_t i;
-
-	for (i = 0; i < n && src[i] != '\0'; i++)
-		dest[dest_len + i] = src[i];
-	dest[dest_len + i] = '\0';
-
-	return (dest);
+	/* null terminate the string array */
+	(*dest)[dest_length + src_length] = NULL;
 }
