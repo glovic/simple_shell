@@ -1,78 +1,92 @@
 #include "shell.h"
 
-char **copy_environ(void);
-void free_environ(void);
-char **get_environ_var(const char *var);
-
 /**
- * copy_environ - Creates a copy of the environment.
+ * _getenv - get an environment variable
+ * @name: the name of the environment variable to look for
  *
- * Return:
- *   - If an error occurs: NULL.
- *   - Otherwise: a double pointer to the new copy.
+ * Return: a pointer to the value in the environment,
+ * or NULL if there is no match
  */
-char **copy_environ(void)
+char *_getenv(const char *name)
 {
-	char **new_environ;
-	size_t size;
-	int index;
+	int i;
+	size_t len = _strlen(name);
 
-	for (size = 0; environ[size]; size++)
-		;
-
-	new_environ = malloc(sizeof(char *) * (size + 1));
-	if (!new_environ)
-		return (NULL);
-
-	for (index = 0; environ[index]; index++)
+	for (i = 0; environ[i] != NULL; i++)
 	{
-		new_environ[index] = malloc(_strlen(environ[index]) + 1);
-
-		if (!new_environ[index])
+		/* check if we found a match */
+		if (_strstr(environ[i], name) && environ[i][len] == '=')
 		{
-			for (index--; index >= 0; index--)
-				free(new_environ[index]);
-			free(new_environ);
-			return (NULL);
+			/* move past the equal to sign and return the actual value */
+			return ((_strchr(environ[i], '=')) + 1);
 		}
-		_strcpy(new_environ[index], environ[index]);
-	}
-	new_environ[index] = NULL;
-
-	return (new_environ);
-}
-
-/**
- * free_environ - Frees the environment copy.
- */
-void free_environ(void)
-{
-	int index;
-
-	for (index = 0; environ[index]; index++)
-		free(environ[index]);
-	free(environ);
-}
-
-/**
- * get_environ_var - Gets an environmental variable from the PATH.
- *
- * @var: The name of the environmental variable to get.
- *
- * Return:
- *   - If the environmental variable does not exist: NULL.
- *   - Otherwise: a pointer to the environmental variable.
- */
-char **get_environ_var(const char *var)
-{
-	int index, len;
-
-	len = _strlen(var);
-	for (index = 0; environ[index]; index++)
-	{
-		if (_strncmp(var, environ[index], len) == 0)
-			return (&environ[index]);
 	}
 
 	return (NULL);
+}
+
+/**
+ * build_path - builds a list of paths in the PATH environment variable
+ * @head: a pointer to the head node
+ *
+ * Return: a pointer to the head onn success, else NULL on failure.
+ */
+path_t *build_path(path_t **head)
+{
+	size_t i = 0;
+	char *path_value = NULL, **pathnames = NULL;
+	path_t *new_node = NULL, *tail = NULL;
+
+	path_value = _getenv("PATH");
+	if (path_value == NULL || *path_value == '\0')
+		return (NULL); /* PATH is not set */
+
+	pathnames = _strtok(path_value, ":");
+	if (pathnames == NULL)
+		return (NULL); /* couldn't get the list of PATH directories */
+	while (pathnames[i] != NULL)
+	{
+		new_node = malloc(sizeof(path_t));
+		if (new_node == NULL)
+			return (NULL);
+
+		new_node->pathname = _strdup(pathnames[i]);
+		_strcpy(new_node->pathname, pathnames[i]);
+		new_node->next = NULL;
+
+		if (*head == NULL)
+		{
+			(*head) = new_node;
+		}
+		else
+		{
+			tail = *head;
+			while (tail->next != NULL)
+				tail = tail->next;
+
+			tail->next = new_node;
+		}
+		/* free memory for the written value */
+		safe_free(pathnames[i]);
+		i++;
+	}
+
+	free_str(&pathnames);
+	return (*head);
+}
+
+/**
+ * print_path - prints the contents in the PATH variable
+ * @list: list of pathnames
+ */
+void print_path(path_t *list)
+{
+	if (list == NULL)
+		return;
+
+	while (list != NULL)
+	{
+		printf("%s\n", list->pathname);
+		list = list->next;
+	}
 }
