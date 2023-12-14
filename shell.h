@@ -213,5 +213,7 @@ void handle_file_as_input(const char *filename, shell_t *msh);
 char **handle_variables(shell_t *msh);
 int parse(shell_t *msh);
 void parse_helper(shell_t *msh, size_t index);
+char *handle_comments(char *line);
+
 
 #endif /* SHELL_H */
