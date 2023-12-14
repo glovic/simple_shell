@@ -1,124 +1,142 @@
 #include "shell.h"
 
-alias_t *alias_to_end(alias_t **head, char *name, char *value);
-void free_alias_list(alias_t *head);
-list_t *add_dir_end(list_t **head, char *dir);
-void free_dir_list(list_t *head);
-
 /**
- * alias_to_end - Adds a node containing a new alias
- *                to the end of an alias_t linked list.
+ * _realloc - reallocate dynamic memory
+ * @old_mem_blk: pointer to the old memory block
+ * @old_size: size of the old memory block
+ * @new_size: size of the new memory block
  *
- * @head: Pointer to the head of the alias_t list.
- * @name: The name of the new alias.
- * @value: The value of the new alias.
+ * Description: The _realloc() function changes the size of the memory block
+ * pointed to by @old_mem_blk to @new_size bytes. The contents will be
+ * unchanged in the range from the start of the region up to the minimum of the
+ * old and new sizes. If the @new_size is larger than the @old_size, the added
+ * memory will not be initialized. If @old_mem_blk is NULL, then the call is
+ * equivalent to @malloc(@new_size), for all values of @old_size and @new_size;
+ * if @new_size is equal to zero, and @old_mem_blk ptr is not NULL, then the
+ * call is equivalent to free(@old_mem_blk).
  *
- * Return: NULL on error.
- *         Otherwise, a pointer to the new node.
+ * Return: a pointer to the newly allocated memory,
+ * or NULL if the request failed
  */
-alias_t *alias_to_end(alias_t **head, char *name, char *value)
+void *_realloc(void *old_mem_blk, size_t old_size, size_t new_size)
 {
-	alias_t *new_node = malloc(sizeof(alias_t));
-	alias_t *last;
+	void *new_mem_blk;
+	size_t min_size;
 
-	if (!new_node)
-		return (NULL);
+	if (new_size == old_size)
+		return (
+			old_mem_blk); /* nothing to do, old and new sizes are the same */
 
-	new_node->next = NULL;
-	new_node->name = malloc(sizeof(char) * (_strlen(name) + 1));
-	if (!new_node->name)
+	/* handle the free() equivalent call of the _realloc function */
+	if (new_size == 0 && old_mem_blk != NULL)
 	{
-		free(new_node);
-		return (NULL);
-	}
-	new_node->value = _strdup(value);
-	if (!new_node->value)
-	{
-		free(new_node->name);
-		free(new_node);
+		safe_free(old_mem_blk);
 		return (NULL);
 	}
-	_strcpy(new_node->name, name);
 
-	if (*head)
+	new_mem_blk = malloc(new_size);
+	if (new_mem_blk == NULL)
+		return (NULL); /* memory allocation failed */
+
+	if (old_mem_blk != NULL)
 	{
-		last = *head;
-		while (last->next != NULL)
-			last = last->next;
-		last->next = new_node;
-	}
-	else
-		*head = new_node;
+		min_size = (old_size < new_size) ? old_size : new_size;
+		/* copy the data from old memory block to new memory block */
+		_memcpy(new_mem_blk, old_mem_blk, min_size);
 
-	return (new_node);
+		safe_free(old_mem_blk); /* free old allocated memory block */
+	}
+
+	return (new_mem_blk);
 }
 
 /**
- * add_dir_end - Adds a node containing a directory path
- *                to the end of a list_t linked list.
+ * _memcpy - copy memory area
+ * @dest: destination buffer
+ * @src: source buffer
+ * @n: number of bytes to write
  *
- * @head: Pointer to the head of the list_t list.
- * @dir: The directory path for the new node to contain.
+ * Description: The _memcpy() function copies @n bytes from memory area @src to
+ * memory area @dest. The memory areas must not overlap.
  *
- * Return: NULL on error.
- *         Otherwise, a pointer to the new node.
+ * Return: A pointer to @dest
  */
-list_t *add_dir_end(list_t **head, char *dir)
+void *_memcpy(void *dest, const void *src, size_t n)
 {
-	list_t *new_node = malloc(sizeof(list_t));
-	list_t *last;
+	size_t i;
 
-	if (!new_node)
-		return (NULL);
+	char *temp_dest = (char *)dest;
+	const char *temp_src = (const char *)src;
 
-	new_node->dir = dir;
-	new_node->next = NULL;
-
-	if (*head)
+	for (i = 0; i < n; i++)
 	{
-		last = *head;
-		while (last->next != NULL)
-			last = last->next;
-		last->next = new_node;
+		temp_dest[i] = temp_src[i];
 	}
-	else
-		*head = new_node;
 
-	return (new_node);
+	return (dest);
 }
 
 /**
- * free_alias_list - Frees an alias_t linked list.
+ * new_word - gets a word a from string and writes it to a memory buffer
+ * @str: string to copy from
+ * @start: start index of the new word in the string
+ * @end: end index of word
  *
- * @head: The head of the alias_t list.
+ * Return: a pointer to the new word
  */
-void free_alias_list(alias_t *head)
+char *new_word(const char *str, int start, int end)
 {
-	alias_t *next;
+	char *new_word;
+	int word_len = end - start;
 
-	while (head)
+	new_word = malloc(sizeof(char) * (word_len + 1));
+	if (new_word == NULL)
 	{
-		next = head->next;
-		free(head->name);
-		free(head->value);
-		free(head);
-		head = next;
+		return (NULL); /* memory allocation failed */
+	}
+
+	_strncpy(new_word, str + start, word_len);
+	new_word[word_len] = '\0';
+
+	return (new_word);
+}
+
+/**
+ * _free - a safer way to free dynamically allocated memory
+ * @ptr: pointer to memory location
+ *
+ * Description: This _free() function takes care of freeing
+ * dynamically allocated memory while ensuring the pointer
+ * @ptr passed to it is not NULL before trying to free it.
+ * Also, after freeing the memory, it sets the pointer @ptr
+ * to NULL to avoid the issue of dangling pointers
+ */
+void _free(void **ptr)
+{
+	if (ptr != NULL && *ptr != NULL)
+	{
+		free(*ptr);
+		*ptr = NULL;
 	}
 }
 
 /**
- * free_dir_list - Frees a list_t linked list.
- * @head: The head of the list_t list.
+ * free_str - frees memory allocated for an array of strings
+ * @str_array: string array
  */
-void free_dir_list(list_t *head)
+void free_str(char ***str_array)
 {
-	list_t *next;
+	int i = 0;
 
-	while (head)
+	if (str_array == NULL || (*str_array) == NULL)
+		return; /* there's nothing to free */
+
+	/* free memory allocated for each string */
+	for (i = 0; (*str_array)[i] != NULL; i++)
 	{
-		next = head->next;
-		free(head->dir);
-		free(head);
-		head = next;
+		safe_free((*str_array)[i]);
 	}
+
+	if ((*str_array) != NULL)
+		safe_free((*str_array));
 }
