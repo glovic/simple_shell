@@ -1,144 +1,193 @@
 #include "shell.h"
 
-char *fill_path_dir(char *path);
-list_t *get_path_dir(char *path);
-
 /**
- * get_cmd_loc - Retrieves the full pathname of a command found in the PATH.
+ * parse_line - parses the receive command line, processes it before handing it
+ * over to the executor only after it has confirmed the command is valid
+ * @msh: contains all the data relevant to the shell's operation
  *
- * @cmd: The command to locate.
- *
- * Return:
- *   - On success: A pointer to the full pathname of the command.
- *   - On failure: NULL if an error occurs or the command cannot be located.
+ * Return: the exit code of the executed program, else -1 if something goes
+ * wrong
  */
-char *get_cmd_loc(char *cmd)
+int parse_line(shell_t *msh)
 {
-	char **path, *temp;
-	list_t *dirs, *head;
-	struct stat st;
+	size_t i;
 
-	path = get_environ_var("PATH");
-	if (!path || !(*path))
-		return (NULL);
+	/* skip normal ENTER keys and leading comments */
+	if (*msh->line == '\n' || *msh->line == '#')
+		return (0);
 
-	dirs = get_path_dir(*path + 5);
-	head = dirs;
+	/* first of all, let's get rid of all comments */
+	msh->line = handle_comments(msh->line);
 
-	while (dirs)
+	msh->tokens = _strtok(msh->line, "\n");
+	if (msh->tokens == NULL)
 	{
-		temp = malloc(_strlen(dirs->dir) + _strlen(cmd) + 2);
-		if (!temp)
-			return (NULL);
-
-		_strcpy(temp, dirs->dir);
-		_strcat(temp, "/");
-		_strcat(temp, cmd);
-
-		if (stat(temp, &st) == 0)
-		{
-			free_dir_list(head);
-			return (temp);
-		}
-
-		dirs = dirs->next;
-		free(temp);
+		fprintf(stderr, "Not enough system memory to continue\n");
+		return (-1);
 	}
 
-	free_dir_list(head);
+	for (i = 0; msh->tokens[i] != NULL; i++)
+	{
+		msh->token = msh->tokens[i];
 
-	return (NULL);
+		if (!_strcmp(msh->tokens[i], "exit") && msh->tokens[i + 1] == NULL)
+		{
+			handle_exit(msh, multi_free);
+		}
+
+		/* now let's tokenize all the commands provided by the user */
+		msh->commands = _strtok(msh->token, ";\n");
+		if (msh->commands == NULL)
+		{
+			fprintf(stderr, "Memory allocation failed...\n");
+			return (-1);
+		}
+
+		msh->exit_code = parse(msh);
+		free_str(&msh->commands);
+	}
+
+	free_str(&msh->tokens);
+	return (msh->exit_code);
 }
 
 /**
- * fill_path_dir - Replaces leading, sandwiched, or trailing colons
- *                 in a path with the current working directory.
+ * parse - parses an array of commands received from the prompt
+ * @msh: contains all the data relevant to the shell's operation
  *
- * @path: The colon-separated list of directories.
- *
- * Return: A copy of 'path' with any leading, sandwiched, or trailing
- *         colons replaced by the current working directory.
+ * Return: the exit code of the executed program
  */
-char *fill_path_dir(char *path)
+int parse(shell_t *msh)
 {
-	int i, length = 0;
-	char *path_copy, *pwd;
+	ssize_t i, offset;
+	char *cur_cmd = NULL, *operator = NULL;
+	char *next_cmd = NULL, *temp_next_cmd = NULL;
 
-	pwd = *(get_environ_var("PWD")) + 4;
-	for (i = 0; path[i]; i++)
+	for (i = 0; msh->commands[i] != NULL; i++)
 	{
-		if (path[i] == ':')
+		operator = get_operator(msh->commands[i]);
+		if (operator != NULL)
 		{
-			if (path[i + 1] == ':' || i == 0 || path[i + 1] == '\0')
-				length += _strlen(pwd) + 1;
-			else
-				length++;
-		}
-		else
-			length++;
-	}
-	path_copy = malloc(sizeof(char) * (length + 1));
-	if (!path_copy)
-		return (NULL);
-	path_copy[0] = '\0';
-	for (i = 0; path[i]; i++)
-	{
-		if (path[i] == ':')
-		{
-			if (i == 0)
+			offset = strcspn(msh->commands[i], operator);
+			/* extract the command before the operator */
+			cur_cmd = strndup(msh->commands[i], offset);
+			if (cur_cmd == NULL)
+				return (0);
+			msh->sub_command = _strtok(cur_cmd, NULL);
+			safe_free(cur_cmd);
+			if (msh->sub_command == NULL)
+				return (0);
+			msh->sub_command = handle_variables(msh);
+			parse_helper(msh, i);
+
+			temp_next_cmd = _strdup(&msh->commands[i][offset + 2]);
+			safe_free(next_cmd);
+			safe_free(msh->commands[i]);
+
+			/* check the exit code and react accordingly */
+			if ((!_strcmp(operator, "&&") && msh->exit_code == 0) ||
+				(!_strcmp(operator, "||") && msh->exit_code != 0))
 			{
-				_strcat(path_copy, pwd);
-				_strcat(path_copy, ":");
-			}
-			else if (path[i + 1] == ':' || path[i + 1] == '\0')
-			{
-				_strcat(path_copy, ":");
-				_strcat(path_copy, pwd);
+				msh->commands[i] = temp_next_cmd;
+				parse(msh);
+				next_cmd = temp_next_cmd;
 			}
 			else
-				_strcat(path_copy, ":");
+				safe_free(temp_next_cmd);
 		}
 		else
-		{
-			_strncat(path_copy, &path[i], 1);
-		}
+			parse_and_execute(msh, i);
 	}
-	return (path_copy);
+	return (msh->exit_code);
 }
 
 /**
- * get_path_dir - Converts a colon-separated list of directories
- *                into a linked list.
+ * parse_and_execute - parses each sub command line and executes it
+ * @msh: contains all the data relevant to the shell's operation
+ * @index: the current index in commands array
  *
- * @path: The colon-separated list of directories.
- *
- * Return: A pointer to the initialized linked list.
+ * Return: the exit code of the executed program
  */
-list_t *get_path_dir(char *path)
+int parse_and_execute(shell_t *msh, size_t index)
 {
-	int index;
-	char **dirs, *path_copy;
-	list_t *head = NULL;
-
-	path_copy = fill_path_dir(path);
-	if (!path_copy)
-		return (NULL);
-	dirs = tokenize_string(path_copy, ":");
-	free(path_copy);
-	if (!dirs)
-		return (NULL);
-
-	for (index = 0; dirs[index]; index++)
+	/* get the sub commands and work on them */
+	msh->sub_command = _strtok(msh->commands[index], NULL);
+	if (msh->sub_command == NULL)
 	{
-		if (add_dir_end(&head, dirs[index]) == NULL)
-		{
-			free_dir_list(head);
-			free(dirs);
-			return (NULL);
-		}
+		return (0); /* probably just lots of tabs or spaces, maybe both */
 	}
 
-	free(dirs);
+	/* check for variables */
+	msh->sub_command = handle_variables(msh);
+	if (msh->sub_command[0] != NULL && msh->sub_command != NULL)
+		parse_helper(msh, index);
+	else
+		free_str(&msh->sub_command);
 
-	return (head);
+	/* cleanup and leave */
+	safe_free(msh->commands[index]);
+	return (msh->exit_code);
+}
+
+/**
+ * parse_helper - performs extra parsing on behalf of the parse and execute
+ * function
+ * @msh: contains all the data relevant to the shell's operation
+ * @index: the current index in commands array
+ */
+void parse_helper(shell_t *msh, size_t index)
+{
+	char *alias_value;
+
+	if (!_strcmp(msh->sub_command[0], "alias") ||
+			!_strcmp(msh->sub_command[0], "unalias"))
+	{
+		msh->exit_code = handle_alias(&msh->aliases, msh->commands[index]);
+		free_str(&msh->sub_command);
+		return;
+	}
+
+	alias_value = get_alias(msh->aliases, msh->sub_command[0]);
+	if (alias_value != NULL)
+	{
+		build_alias_cmd(&msh->sub_command, alias_value);
+		safe_free(alias_value);
+	}
+
+	msh->exit_code = handle_builtin(msh);
+	if (msh->exit_code != NOT_BUILTIN)
+	{
+		free_str(&msh->sub_command);
+		return; /* shell builtin executed well */
+	}
+	/* handle the command with the PATH variable */
+	if (msh->path_list != NULL && !_strchr(msh->sub_command[0], '/'))
+	{
+		msh->exit_code = handle_with_path(msh);
+		if (msh->exit_code == -1)
+			msh->exit_code = print_cmd_not_found(msh);
+	}
+	else
+	{
+		if (access(msh->sub_command[0], X_OK) == 0 &&
+				_strchr(msh->sub_command[0], '/'))
+			msh->exit_code = execute_command(msh->sub_command[0], msh);
+		else
+			msh->exit_code = print_cmd_not_found(msh);
+	}
+	free_str(&msh->sub_command);
+}
+
+/**
+ * print_cmd_not_found - prints the command not found error
+ * @msh: contains all the data relevant to the shell's operation
+ *
+ * Return: 127 command not found code, else 0
+ */
+int print_cmd_not_found(shell_t *msh)
+{
+	dprintf(STDERR_FILENO, "%s: %lu: %s: not found\n", msh->prog_name,
+			msh->cmd_count, msh->sub_command[0]);
+
+	return (CMD_NOT_FOUND); /* command not found */
 }
