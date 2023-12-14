@@ -1,123 +1,76 @@
 #include "shell.h"
 
-int cant_open(char *file_path);
-int proc_cmd_file(char *file_path, int *exe_ret);
-
 /**
- * cant_open - Handles file opening failures.
+ * handle_with_path - handles commands when the PATH is set
+ * @msh: contains all the data relevant to the shell's operation
  *
- * @file_path: Path to the intended file.
- *
- * Return: 127 indicating a failed file opening.
+ * Return: the exit code of the child process, else -1 if the command is not in
+ * the PATH provided
  */
-int cant_open(char *file_path)
+int handle_with_path(shell_t *msh)
 {
-	char *error, *hist_str;
-	int len;
+	char path[BUFF_SIZE];
+	path_t *path_list = msh->path_list;
 
-	hist_str = _itoa(historyCounter);
-	if (!hist_str)
-		return (127);
-
-	len = _strlen(name) + _strlen(hist_str) + _strlen(file_path) + 16;
-	error = malloc(sizeof(char) * (len + 1));
-	if (!error)
+	while (path_list != NULL)
 	{
-		free(hist_str);
-		return (127);
+		sprintf(path, "%s%s%s", path_list->pathname, "/", msh->sub_command[0]);
+		if (access(path, X_OK) == 0)
+		{
+			return (execute_command(path, msh));
+		}
+		else if (access(msh->sub_command[0], X_OK) == 0)
+		{
+			return (execute_command(path, msh));
+		}
+		path_list = path_list->next;
 	}
 
-	_strcpy(error, name);
-	_strcat(error, ": ");
-	_strcat(error, hist_str);
-	_strcat(error, ": Can't open ");
-	_strcat(error, file_path);
-	_strcat(error, "\n");
-
-	free(hist_str);
-	write(STDERR_FILENO, error, len);
-	free(error);
-	return (127);
+	return (-1);
 }
 
 /**
- * proc_cmd_file - Executes commands stored in a file.
+ * handle_file_as_input - handles execution when a file is given as input on
+ * the command line (non-interactive mode)
+ * @filename: the name of the file to read from
+ * @msh: contains all the data relevant to the shell's operation
  *
- * @file_path: Path to the file.
- * @exe_ret: Return value of the last executed command.
- *
- * Return: 127 if the file couldn't be opened.
- *         -1 if malloc fails.
- *         Otherwise, the return value of the last command executed.
+ * Return: 0, or the exit status of the just exited process
  */
-int proc_cmd_file(char *file_path, int *exe_ret)
+void handle_file_as_input(const char *filename, shell_t *msh)
 {
-	ssize_t file, b_read, i;
-	unsigned int line_size = 0;
-	unsigned int old_size = 120;
-	char *line, **args, **front;
-	char buffer[120];
-	int retu;
+	size_t n = 0;
+	int n_read, fd;
 
-	historyCounter = 0;
-	file = open(file_path, O_RDONLY);
-	if (file == -1)
+	fd = open(filename, O_RDONLY);
+	if (fd == -1)
 	{
-		*exe_ret = cant_open(file_path);
-		return (*exe_ret);
-	}
-	line = malloc(sizeof(char) * old_size);
-	if (!line)
-		return (-1);
-	do {
-		b_read = read(file, buffer, 119);
-		if (b_read == 0 && line_size == 0)
-			return (*exe_ret);
-		buffer[b_read] = '\0';
-		line_size += b_read;
-		line = _realloc(line, old_size, line_size);
-		_strcat(line, buffer);
-		old_size = line_size;
-	} while (b_read);
-	for (i = 0; line[i] == '\n'; i++)
-		line[i] = ' ';
-	for (; i < line_size; i++)
-	{
-		if (line[i] == '\n')
-		{
-			line[i] = ';';
-			for (i += 1; i < line_size && line[i] == '\n'; i++)
-				line[i] = ' ';
-		}
-	}
-	replace_variables(&line, exe_ret);
-	process_input_line(&line, line_size);
-	args = tokenize_string(line, " ");
-	free(line);
-	if (!args)
-		return (0);
-	if (verify_args(args) != 0)
-	{
-		*exe_ret = 2;
-		free_exe_args(args, args);
-		return (*exe_ret);
-	}
-	front = args;
-
-	for (i = 0; args[i]; i++)
-	{
-		if (_strncmp(args[i], ";", 1) == 0)
-		{
-			free(args[i]);
-			args[i] = NULL;
-			retu = execute_args(args, front, exe_ret);
-			args = &args[++i];
-			i = 0;
-		}
+		/* we couldn't open the file, let's clean and leave */
+		free_list(&msh->path_list);
+		fprintf(stderr, "%s: 0: Can't open %s\n", msh->prog_name, filename);
+		exit(CMD_NOT_FOUND);
 	}
 
-	retu = execute_args(args, front, exe_ret);
+	n_read = _getline(&msh->line, &n, fd);
 
-	free(front);
-	return (retu);
+	/*
+	 * let us know if there was an error while closing file descriptor but
+	 * continue any way
+	 */
+	if (close(fd) == -1)
+		fprintf(stderr, "An error occurred while closing file descriptor #%d\n", fd);
+
+	if (n_read == -1)
+	{
+		msh->exit_code = -1;
+		handle_exit(msh, multi_free);
+	}
+
+	if (n_read)
+	{
+		msh->prog_name = filename;
+		parse_line(msh);
+	}
+
+	handle_exit(msh, multi_free);
 }
