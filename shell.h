@@ -181,10 +181,10 @@ void sigint_handler(int signum);
  */
 
 int _unsetenv(const char *name);
-int handle_cd(shell_t *msh);
+int handle_cd(shell_t *hsh);
 int _setenv(const char *name, const char *value, int overwrite);
-int handle_builtin(shell_t *msh);
-int handle_exit(shell_t *msh, void (*cleanup)(const char *format, ...));
+int handle_builtin(shell_t *hsh);
+int handle_exit(shell_t *hsh, void (*cleanup)(const char *format, ...));
 
 /* parsers and executors */
 /**
@@ -204,15 +204,15 @@ int handle_exit(shell_t *msh, void (*cleanup)(const char *format, ...));
 
 char *get_operator(char *str);
 char *handle_comments(char *command);
-int parse_line(shell_t *msh);
-int execute_command(const char *pathname, shell_t *msh);
-int parse_and_execute(shell_t *msh, size_t index);
-int handle_with_path(shell_t *msh);
-int print_cmd_not_found(shell_t *msh);
-void handle_file_as_input(const char *filename, shell_t *msh);
-char **handle_variables(shell_t *msh);
-int parse(shell_t *msh);
-void parse_helper(shell_t *msh, size_t index);
+int parse_line(shell_t *hsh);
+int execute_command(const char *pathname, shell_t *hsh);
+int parse_and_execute(shell_t *hsh, size_t index);
+int handle_with_path(shell_t *hsh);
+int print_cmd_not_found(shell_t *hsh);
+void handle_file_as_input(const char *filename, shell_t *hsh);
+char **handle_variables(shell_t *hsh);
+int parse(shell_t *hsh);
+void parse_helper(shell_t *hsh, size_t index);
 char *handle_comments(char *line);
 
 

@@ -7,26 +7,26 @@
  */
 shell_t *init_shell(void)
 {
-	shell_t *msh = malloc(sizeof(shell_t));
+	shell_t *hsh = malloc(sizeof(shell_t));
 
-	if (msh == NULL)
+	if (hsh == NULL)
 	{
 		fprintf(stderr, "Launching shell failed.\n"
 				"Please ensure you have enough system resources for this operation\n");
 		exit(-1);
 	}
 
-	msh->path_list = NULL;
-	msh->aliases = NULL;
-	msh->line = NULL;
-	msh->sub_command = NULL;
-	msh->commands = NULL;
-	msh->tokens = NULL;
-	msh->token = NULL;
-	msh->cmd_count = 0;
-	msh->exit_code = 0;
+	hsh->path_list = NULL;
+	hsh->aliases = NULL;
+	hsh->line = NULL;
+	hsh->sub_command = NULL;
+	hsh->commands = NULL;
+	hsh->tokens = NULL;
+	hsh->token = NULL;
+	hsh->cmd_count = 0;
+	hsh->exit_code = 0;
 
-	return (msh);
+	return (hsh);
 }
 
 /**
@@ -34,7 +34,7 @@ shell_t *init_shell(void)
  * file
  * @buffer: the buffer to write the hostname to, it should large enough.
  *
- * Return: the hostname if found, else defaults to using 'msh' when anything
+ * Return: the hostname if found, else defaults to using 'hsh' when anything
  * goes wrong
  */
 char *get_hostname(char *buffer)
@@ -46,8 +46,8 @@ char *get_hostname(char *buffer)
 	/* let's check whether the file opening failed */
 	if (fd == -1)
 	{
-		/* looks like it did, fall back to using 'msh' as the hostname */
-		_strcpy(buffer, "msh");
+		/* looks like it did, fall back to using 'hsh' as the hostname */
+		_strcpy(buffer, "hsh");
 		return (buffer);
 	}
 
@@ -56,7 +56,7 @@ char *get_hostname(char *buffer)
 
 	/* one more time, let's check for read failures and fall back as needed */
 	if (n_read == -1 || n_read == 0)
-		_strcpy(buffer, "msh");
+		_strcpy(buffer, "hsh");
 	else
 		buffer[n_read - 1] = '\0'; /* hostname was succesfully grabbed, use it */
 
@@ -95,7 +95,7 @@ void show_prompt(void)
 		 * there was not enough environment variables to build a much more
 		 * customized prompt, fall back to the minimal prompt
 		 */
-		sprintf(prompt, "msh%% ");
+		sprintf(prompt, "hsh%% ");
 	}
 
 	/* show the prompt in interactive modes only */

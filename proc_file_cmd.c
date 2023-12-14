@@ -2,26 +2,26 @@
 
 /**
  * handle_with_path - handles commands when the PATH is set
- * @msh: contains all the data relevant to the shell's operation
+ * @hsh: contains all the data relevant to the shell's operation
  *
  * Return: the exit code of the child process, else -1 if the command is not in
  * the PATH provided
  */
-int handle_with_path(shell_t *msh)
+int handle_with_path(shell_t *hsh)
 {
 	char path[BUFF_SIZE];
-	path_t *path_list = msh->path_list;
+	path_t *path_list = hsh->path_list;
 
 	while (path_list != NULL)
 	{
-		sprintf(path, "%s%s%s", path_list->pathname, "/", msh->sub_command[0]);
+		sprintf(path, "%s%s%s", path_list->pathname, "/", hsh->sub_command[0]);
 		if (access(path, X_OK) == 0)
 		{
-			return (execute_command(path, msh));
+			return (execute_command(path, hsh));
 		}
-		else if (access(msh->sub_command[0], X_OK) == 0)
+		else if (access(hsh->sub_command[0], X_OK) == 0)
 		{
-			return (execute_command(path, msh));
+			return (execute_command(path, hsh));
 		}
 		path_list = path_list->next;
 	}
@@ -33,11 +33,11 @@ int handle_with_path(shell_t *msh)
  * handle_file_as_input - handles execution when a file is given as input on
  * the command line (non-interactive mode)
  * @filename: the name of the file to read from
- * @msh: contains all the data relevant to the shell's operation
+ * @hsh: contains all the data relevant to the shell's operation
  *
  * Return: 0, or the exit status of the just exited process
  */
-void handle_file_as_input(const char *filename, shell_t *msh)
+void handle_file_as_input(const char *filename, shell_t *hsh)
 {
 	size_t n = 0;
 	int n_read, fd;
@@ -46,12 +46,12 @@ void handle_file_as_input(const char *filename, shell_t *msh)
 	if (fd == -1)
 	{
 		/* we couldn't open the file, let's clean and leave */
-		free_list(&msh->path_list);
-		fprintf(stderr, "%s: 0: Can't open %s\n", msh->prog_name, filename);
+		free_list(&hsh->path_list);
+		fprintf(stderr, "%s: 0: Can't open %s\n", hsh->prog_name, filename);
 		exit(CMD_NOT_FOUND);
 	}
 
-	n_read = _getline(&msh->line, &n, fd);
+	n_read = _getline(&hsh->line, &n, fd);
 
 	/*
 	 * let us know if there was an error while closing file descriptor but
@@ -62,15 +62,15 @@ void handle_file_as_input(const char *filename, shell_t *msh)
 
 	if (n_read == -1)
 	{
-		msh->exit_code = -1;
-		handle_exit(msh, multi_free);
+		hsh->exit_code = -1;
+		handle_exit(hsh, multi_free);
 	}
 
 	if (n_read)
 	{
-		msh->prog_name = filename;
-		parse_line(msh);
+		hsh->prog_name = filename;
+		parse_line(hsh);
 	}
 
-	handle_exit(msh, multi_free);
+	handle_exit(hsh, multi_free);
 }

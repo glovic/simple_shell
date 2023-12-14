@@ -11,18 +11,18 @@ int main(int argc, char *argv[])
 {
 	size_t len = 0;
 	ssize_t n_read = 0;
-	shell_t *msh = NULL;
+	shell_t *hsh = NULL;
 
 	/* scout for singal interrupts (Ctrl + C) */
 	signal(SIGINT, sigint_handler);
 
-	msh = init_shell();
-	msh->prog_name = argv[0];
-	build_path(&msh->path_list);
+	hsh = init_shell();
+	hsh->prog_name = argv[0];
+	build_path(&hsh->path_list);
 
 	if (argc >= 2)
 	{
-		handle_file_as_input(argv[1], msh);
+		handle_file_as_input(argv[1], hsh);
 	}
 
 	while (RUNNING)
@@ -30,21 +30,21 @@ int main(int argc, char *argv[])
 		show_prompt();
 		fflush(stdout);
 
-		n_read = _getline(&msh->line, &len, STDIN_FILENO);
+		n_read = _getline(&hsh->line, &len, STDIN_FILENO);
 
-		++msh->cmd_count; /* keep track of the number of inputs to the shell */
+		++hsh->cmd_count; /* keep track of the number of inputs to the shell */
 
 		/* check for empty prompt or if Ctrl+D was received */
 		if (n_read == 0)
 		{
 			if (isatty(STDIN_FILENO))
 				printf("exit\n");
-			handle_exit(msh, multi_free); /* clean up and leave */
+			handle_exit(hsh, multi_free); /* clean up and leave */
 		}
 
-		msh->exit_code = parse_line(msh);
-		safe_free(msh->line);
+		hsh->exit_code = parse_line(hsh);
+		safe_free(hsh->line);
 	}
 
-	return (msh->exit_code);
+	return (hsh->exit_code);
 }

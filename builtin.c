@@ -98,48 +98,48 @@ int _unsetenv(const char *name)
 
 /**
  * handle_exit - handles the built-in `exit` command for the shell
- * @msh: contains all the data relevant to the shell's operation
+ * @hsh: contains all the data relevant to the shell's operation
  * @cleanup: a cleanup function
  *
  * Return: 2 on error, else exits with the last the provided exit code
  */
-int handle_exit(shell_t *msh, void (*cleanup)(const char *format, ...))
+int handle_exit(shell_t *hsh, void (*cleanup)(const char *format, ...))
 {
-	const char *status_code = (msh->sub_command) ? msh->sub_command[1] : NULL;
-	int exit_code = msh->exit_code;
+	const char *status_code = (hsh->sub_command) ? hsh->sub_command[1] : NULL;
+	int exit_code = hsh->exit_code;
 
 	if (status_code == NULL)
 	{
-		cleanup("spattt", msh->line, &msh->path_list, &msh->aliases,
-				&msh->commands, &msh->sub_command, &msh->tokens);
-		safe_free(msh);
+		cleanup("spattt", hsh->line, &hsh->path_list, &hsh->aliases,
+				&hsh->commands, &hsh->sub_command, &hsh->tokens);
+		safe_free(hsh);
 		exit(exit_code);
 	}
 
 	if (isalpha(*status_code) || _atoi(status_code) < 0 || *status_code == '-')
 	{
 		dprintf(STDERR_FILENO, "%s: %lu: exit: Illegal number: %s\n",
-				msh->prog_name, msh->cmd_count, status_code);
+				hsh->prog_name, hsh->cmd_count, status_code);
 		return (CMD_ERR);
 	}
 
 	exit_code = _atoi(status_code);
-	cleanup("spattt", msh->line, &msh->path_list, &msh->aliases,
-			&msh->commands, &msh->sub_command, &msh->tokens);
-	safe_free(msh);
+	cleanup("spattt", hsh->line, &hsh->path_list, &hsh->aliases,
+			&hsh->commands, &hsh->sub_command, &hsh->tokens);
+	safe_free(hsh);
 	exit(exit_code);
 }
 
 /**
  * handle_cd - handles the builtin `cd` command
- * @msh: contains all the data relevant to the shell's operation
+ * @hsh: contains all the data relevant to the shell's operation
  *
  * Return: 0 on success, else 2 on error
  */
-int handle_cd(shell_t *msh)
+int handle_cd(shell_t *hsh)
 {
 	char path[PATH_SIZE], pwd[BUFF_SIZE];
-	const char *pathname = msh->sub_command[1];
+	const char *pathname = hsh->sub_command[1];
 	char *home = _getenv("HOME"), *oldpath = _getenv("OLDPWD");
 
 	getcwd(pwd, BUFF_SIZE);
@@ -155,11 +155,11 @@ int handle_cd(shell_t *msh)
 		if (chdir(path) == -1)
 		{
 			if (_strspn(pathname, "-") > 2)
-				fprintf(stderr, "%s: %lu: cd: Illegal option: --\n", msh->prog_name,
-						msh->cmd_count);
+				fprintf(stderr, "%s: %lu: cd: Illegal option: --\n", hsh->prog_name,
+						hsh->cmd_count);
 			else
-				fprintf(stderr, "%s: %lu: cd: can't cd to %s\n", msh->prog_name,
-						msh->cmd_count, pathname);
+				fprintf(stderr, "%s: %lu: cd: can't cd to %s\n", hsh->prog_name,
+						hsh->cmd_count, pathname);
 			return (CMD_ERR);
 		}
 		if (dash)
