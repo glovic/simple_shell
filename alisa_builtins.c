@@ -1,157 +1,197 @@
 #include "shell.h"
 
-
-int define_alias(char **args, char __attribute__((__unused__)) **front);
-void set_alias(char *var_name, char *value);
-void print_alias(alias_t *alias);
-
 /**
- * define_alias - Builtin command that either prints all aliases, specific
- *                aliases, or sets an alias.
+ * add_alias - Adds an alias to the linked list.
+ * @aliases: Pointer to the list containing aliases.
+ * @name: The name of the alias to be added.
+ * @value: The value associated with the name.
  *
- * @args: An array of arguments.
- * @front: A double pointer to the beginning of args.
- *
- * Return:
- *   - If an error occurs: -1.
- *   - Otherwise: 0.
+ * Return: The address of the newly added node (alias),
+ *         or the address of the previous if it already exists.
  */
-int define_alias(char **args, char __attribute__((__unused__)) **front)
-{
-	alias_t *temp = aliases;
-	int i, retu = 0;
-	char *value;
 
-	if (!args[0])
+alias_t *add_alias(alias_t **aliases, const char *name, const char *value)
+{
+	alias_t *current, *alias;
+
+	alias = malloc(sizeof(alias_t));
+	if (alias == NULL)
+		return (NULL);
+
+	alias->name = _strdup(name);
+	alias->value = _strdup(value);
+	alias->next = NULL;
+
+	if (*aliases == NULL)
 	{
-		while (temp)
-		{
-			print_alias(temp);
-			temp = temp->next;
-		}
-		return (retu);
+		(*aliases) = alias;
+		return (*aliases);
 	}
-	for (i = 0; args[i]; i++)
+
+	current = *aliases;
+	while (current != NULL)
 	{
-		temp = aliases;
-		value = _strchr(args[i], '=');
-		if (!value)
+		if (!_strcmp(name, current->name))
 		{
-			while (temp)
-			{
-				if (_strcmp(args[i], temp->name) == 0)
-				{
-					print_alias(temp);
-					break;
-				}
-				temp = temp->next;
-			}
-			if (!temp)
-				retu = generate_error(args + i, 1);
+			safe_free(current->value);
+			current->value = _strdup(value);
+			safe_free(alias->name);
+			safe_free(alias->value);
+			safe_free(alias);
+
+			return (current);
 		}
-		else
-			set_alias(args[i], value);
+		current = current->next;
 	}
-	return (retu);
+
+	current = *aliases;
+	while (current->next != NULL)
+	{
+		current = current->next;
+	}
+	current->next = alias;
+
+	return (alias);
 }
 
-
 /**
- * set_alias - Sets an existing alias 'name' with a new value 'value' or
- *              creates a new alias.
- *
- * @var_name: Name of the alias.
- * @value: Value of the alias. First character is a '='.
+ * print_aliases - prints all the aliases
+ * @aliases: the list of aliases
  */
-void set_alias(char *var_name, char *value)
+void print_aliases(const alias_t *aliases)
 {
-	alias_t *temp = aliases;
-	int len, j, k;
-	char *new_value;
-
-	*value = '\0';
-	value++;
-	len = _strlen(value) - _strspn(value, "'\"");
-	new_value = malloc(sizeof(char) * (len + 1));
-	if (!new_value)
+	if (aliases == NULL)
 		return;
-	for (j = 0, k = 0; value[j]; j++)
+
+	while (aliases != NULL)
 	{
-		if (value[j] != '\'' && value[j] != '"')
-			new_value[k++] = value[j];
+		printf("%s='%s'\n", aliases->name, aliases->value);
+		aliases = aliases->next;
 	}
-	new_value[k] = '\0';
-	while (temp)
-	{
-		if (_strcmp(var_name, temp->name) == 0)
-		{
-			free(temp->value);
-			temp->value = new_value;
-			break;
-		}
-		temp = temp->next;
-	}
-	if (!temp)
-		alias_to_end(&aliases, var_name, new_value);
 }
 
 /**
- * print_alias - Prints the alias in the format name='value'.
- * @alias: Pointer to an alias.
- */
-void print_alias(alias_t *alias)
-{
-	char *alias_string;
-	int len = _strlen(alias->name) + _strlen(alias->value) + 4;
-
-	alias_string = malloc(sizeof(char) * (len + 1));
-	if (!alias_string)
-		return;
-	_strcpy(alias_string, alias->name);
-	_strcat(alias_string, "='");
-	_strcat(alias_string, alias->value);
-	_strcat(alias_string, "'\n");
-
-	write(STDOUT_FILENO, alias_string, len);
-	free(alias_string);
-}
-/**
- * substitute_aliases - Goes through the arguments and replace any matching alias
- * with their value.
- * @args: 2D pointer to the arguments.
+ * unalias - Removes an alias from the list.
+ * @aliases: Pointer to the list of aliases.
+ * @command: Null-terminated array of aliases to be removed.
  *
- * Return: 2D pointer to the arguments.
+ * Return: 0 if the alias was found and removed successfully, else 1.
  */
-char **substitute_aliases(char **args)
-{
-	alias_t *temp;
-	int i;
-	char *new_value;
 
-	if (_strcmp(args[0], "alias") == 0)
-		return (args);
-	for (i = 0; args[i]; i++)
+int unalias(alias_t **aliases, char *command)
+{
+	alias_t *current, *prev;
+	size_t i;
+	char **names;
+	int exit_code = 1; /* assume failure by default */
+
+	names = _strtok(command, NULL);
+	if (names == NULL)
+		return (-1);
+
+	current = *aliases;
+	for (i = 1; names[i] != NULL; i++)
 	{
-		temp = aliases;
-		while (temp)
+		while (current != NULL)
 		{
-			if (_strcmp(args[i], temp->name) == 0)
+			if (!_strcmp(current->name, names[i]))
 			{
-				new_value = malloc(sizeof(char) * (_strlen(temp->value) + 1));
-				if (!new_value)
-				{
-					free_exe_args(args, args);
-					return (NULL);
-				}
-				_strcpy(new_value, temp->value);
-				free(args[i]);
-				args[i] = new_value;
-				i--;
+				if (current == *aliases)
+					*aliases = (*aliases)->next;
+				else
+					prev->next = current->next;
+				multi_free("ss", current->name, current->value);
+				safe_free(current);
+				exit_code = 0;
 				break;
 			}
-			temp = temp->next;
+			prev = current;
+			current = current->next;
 		}
+		current = *aliases; /* point back to aliases before next run */
+
+		if (exit_code != 0)
+		{
+			fprintf(stderr, "unalias: %s not found\n", names[i]);
+			exit_code = 1;
+		}
+		safe_free(names[i]);
+	}
+	free_str(&names);
+	return (exit_code);
+}
+
+/**
+ * print_alias - Prints a specific alias based on the given name.
+ * @aliases: The list of aliases.
+ * @name: The name of the alias to be printed.
+ *
+ * Return: 0 if the alias was found, else 1.
+ */
+
+int print_alias(const alias_t *aliases, const char *name)
+{
+	if (aliases == NULL)
+	{
+		fprintf(stderr, "alias: %s not found\n", name);
+		return (1); /* the list is empty, can't search */
 	}
 
-	return (args);
+	while (aliases != NULL)
+	{
+		if (!_strcmp(aliases->name, name))
+		{
+			printf("%s='%s'\n", aliases->name, aliases->value);
+			return (0);
+		}
+		aliases = aliases->next;
+	}
+
+	/* we reached the end of the list and didn't find the specified alias */
+	fprintf(stderr, "alias: %s not found\n", name);
+	return (1);
+}
+
+/**
+ * get_alias - Retrieves the value of an alias from a list.
+ * @aliases: The list containing aliases.
+ * @name: The name of the alias.
+ *
+ * Return: The value of the alias, or NULL if not found.
+ */
+
+char *get_alias(alias_t *aliases, const char *name)
+{
+	char *value, *chained_value;
+	alias_t *current;
+
+	if (aliases == NULL || name == NULL)
+		return (NULL); /* aliases is empty or name provided is invalid */
+
+	current = aliases;
+
+	while (current != NULL)
+	{
+		if (!_strcmp(current->name, name))
+		{
+			value = _strdup(current->value);
+			if (value == NULL)
+				return (NULL);
+			if (!_strcmp(current->name, current->value))
+				return (value);
+
+			/* check for aliases chained to other aliases */
+			chained_value = get_alias(aliases, value);
+			if (chained_value != NULL)
+			{
+				safe_free(value);
+				return (chained_value);
+			}
+
+			return (value); /* not a chained value, return as-is */
+		}
+		current = current->next;
+	}
+
+	return (NULL);
 }
